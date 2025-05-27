@@ -4,32 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prediction Markets - {% block title %}{% endblock %}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-gray-50 min-h-screen">
-    <nav class="bg-white shadow-lg">
-        <div class="max-w-7xl mx-auto px-4">
-            <div class="flex justify-between h-16">
-                <div class="flex">
-                    <div class="flex-shrink-0 flex items-center">
-                        <a href="/" class="text-xl font-bold text-blue-600">PredictMarket</a>
-                    </div>
-                </div>
+<body class="bg-gray-50 min-h-screen flex flex-col justify-between">
+
+    <!-- Navbar -->
+    <nav class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <a href="/" class="text-xl font-bold text-blue-600 hover:text-blue-800 transition">PredictMarket</a>
+            <div class="flex items-center space-x-4">
                 {% if session.get('user') %}
-                <div class="flex items-center">
-                    <a href="/logout" class="text-gray-600 hover:text-gray-900">Logout</a>
-                </div>
+                    {% if session['user'].get('is_admin') %}
+                        <a href="/admin" class="text-sm text-blue-600 hover:underline font-semibold">Admin</a>
+                    {% endif %}
+                    <a href="/logout" class="text-sm text-gray-600 hover:text-gray-900 transition">Logout</a>
+                {% else %}
+                    <a href="/login" class="text-sm text-gray-600 hover:text-gray-900 transition">Login</a>
+                    <a href="/register" class="text-sm text-gray-600 hover:text-gray-900 transition">Register</a>
                 {% endif %}
             </div>
         </div>
     </nav>
 
+    <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
                 <div class="max-w-7xl mx-auto px-4 mt-4">
-                    <div class="rounded-md p-4 {% if category == 'error' %}bg-red-50 text-red-700{% else %}bg-green-50 text-green-700{% endif %}">
+                    <div class="rounded-md p-4 {% if category == 'error' %}bg-red-100 text-red-700{% else %}bg-green-100 text-green-700{% endif %} shadow">
                         {{ message }}
                     </div>
                 </div>
@@ -37,8 +40,22 @@
         {% endif %}
     {% endwith %}
 
-    <main class="max-w-7xl mx-auto px-4 py-8">
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 py-8 flex-grow">
         {% block content %}{% endblock %}
     </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t shadow-sm mt-12">
+        <div class="max-w-7xl mx-auto px-4 py-6 flex flex-col md:flex-row justify-between items-center text-sm text-gray-500">
+            <p>&copy; {{ current_year or 2025 }} PredictMarket. All rights reserved.</p>
+            <div class="flex space-x-4 mt-2 md:mt-0">
+                <a href="https://twitter.com" class="hover:text-blue-500"><i class="fab fa-twitter"></i></a>
+                <a href="https://github.com" class="hover:text-gray-800"><i class="fab fa-github"></i></a>
+                <a href="mailto:support@predictmarket.com" class="hover:text-red-500"><i class="fas fa-envelope"></i></a>
+            </div>
+        </div>
+    </footer>
+
 </body>
 </html>

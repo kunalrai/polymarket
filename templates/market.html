@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Market Details{% endblock %}
+
+{% block content %}
+<div class="bg-white shadow-md rounded-lg p-6">
+    <h1 class="text-3xl font-bold text-blue-700 mb-2">{{ market.title }}</h1>
+    <p class="text-gray-700 mb-4">{{ market.description }}</p>
+
+    <div class="text-sm text-gray-500 mb-6">
+        <strong>Market Ends:</strong> {{ market.end_date }}
+    </div>
+
+    <!-- Price Display -->
+    <div class="grid grid-cols-2 gap-4 mb-6">
+        <div class="bg-blue-100 p-4 rounded text-center">
+            <h2 class="text-lg font-semibold text-blue-700">Yes Price</h2>
+            <p class="text-2xl font-bold text-blue-900">{{ market.price_yes }}</p>
+        </div>
+        <div class="bg-red-100 p-4 rounded text-center">
+            <h2 class="text-lg font-semibold text-red-700">No Price</h2>
+            <p class="text-2xl font-bold text-red-900">{{ market.price_no }}</p>
+        </div>
+    </div>
+
+    <!-- Buy Buttons -->
+    <div class="flex space-x-4 mb-8">
+        <form action="/trade/{{ market.id }}/yes" method="POST" class="flex flex-col items-center">
+            <input type="number" name="amount" class="border rounded px-3 py-2 mb-2 w-32" placeholder="Amount" min="1" required>
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow">Buy Yes</button>
+        </form>
+
+        <form action="/trade/{{ market.id }}/no" method="POST" class="flex flex-col items-center">
+            <input type="number" name="amount" class="border rounded px-3 py-2 mb-2 w-32" placeholder="Amount" min="1" required>
+            <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded shadow">Buy No</button>
+        </form>
+    </div>
+
+    <!-- Trading History -->
+    <div>
+        <h3 class="text-xl font-semibold text-gray-800 mb-4">Trading History</h3>
+        {% if trades %}
+        <ul class="divide-y divide-gray-200">
+            {% for trade in trades %}
+            <li class="py-2 flex justify-between text-sm">
+                <span>{{ trade.timestamp.strftime('%Y-%m-%d %H:%M') }}</span>
+                <span>{{ trade.user_id }} - {{ trade.share_type }} @ {{ trade.amount }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-gray-500">No trades yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
