@@ -6,7 +6,7 @@ from utils.supabase_client import get_supabase_client
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY')
+app.secret_key = "secret_key"  # Change this to a secure key in production
 supabase = get_supabase_client()
 
 @app.route('/')
