@@ -273,6 +273,51 @@ def trade(market_id, share_type):
         return redirect(url_for('market_detail', market_id=market_id))
 
     return render_template('trade.html', market=market, share_type=share_type)
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form.get('email')
+
+        try:
+            supabase.auth.reset_password_email(email, redirect_to="http://localhost:5000/update-password")
+            flash('Password reset link sent to your email.', 'success')
+        except Exception as e:
+            flash(f"Error: {str(e)}", 'error')
+
+    return render_template('auth/forgot_password.html')
+@app.route('/update-password')
+def update_password():
+    return render_template('auth/update_password.html')
+
+@app.route('/set-new-password', methods=['GET', 'POST'])
+def set_new_password():
+    access_token = request.args.get('token')
+
+    if not access_token:
+        flash("Invalid or missing token", "error")
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        new_password = request.form.get('new_password')
+
+        if len(new_password) < 6:
+            flash("Password must be at least 6 characters", "error")
+            return render_template('auth/set_new_password.html', token=access_token)
+
+        try:
+            # Update password using Supabase admin endpoint
+            supabase.auth.update_user({
+                "password": new_password
+            }, access_token=access_token)
+
+            flash("Password updated successfully. You can now log in.", "success")
+            return redirect(url_for('login'))
+
+        except Exception as e:
+            flash(f"Error updating password: {str(e)}", "error")
+
+    return render_template('auth/set_new_password.html', token=access_token)
+
 
 if __name__ == '__main__':
     with app.app_context():
