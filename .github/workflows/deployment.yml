@@ -9,7 +9,7 @@ on:
 env:
   SECRET_KEY: ${{ secrets.SECRET_KEY }}
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-  SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
 jobs:
   build-and-deploy:
