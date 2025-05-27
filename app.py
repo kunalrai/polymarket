@@ -234,6 +234,45 @@ def market_detail(market_id):
 
     return render_template("market.html", market=market, trades=trades)
 
+@app.route('/trade/<string:market_id>/<string:share_type>', methods=['GET', 'POST'])
+def trade(market_id, share_type):
+    if 'user' not in session:
+        flash("Please log in to trade", "error")
+        return redirect(url_for('login'))
+
+    if share_type not in ['yes', 'no']:
+        flash("Invalid share type", "error")
+        return redirect(url_for('market_detail', market_id=market_id))
+
+    market = Market.query.get(market_id)
+    if not market:
+        flash("Market not found", "error")
+        return redirect(url_for('home'))
+
+    if request.method == 'POST':
+        amount = float(request.form.get('amount', 0))
+        user_id = session['user'].get('email')  # Or Supabase UID if you store that
+
+        price = market.price_yes if share_type == 'yes' else market.price_no
+
+        if amount <= 0:
+            flash("Amount must be greater than 0", "error")
+            return redirect(request.url)
+
+        # Create a Trade
+        trade = Trade(
+            user_id=user_id,
+            market_id=market_id,
+            share_type=share_type,
+            amount=amount,
+            price_at_trade=price
+        )
+        db.session.add(trade)
+        db.session.commit()
+        flash(f"Bought {amount} {share_type.upper()} shares at ${price}", "success")
+        return redirect(url_for('market_detail', market_id=market_id))
+
+    return render_template('trade.html', market=market, share_type=share_type)
 
 if __name__ == '__main__':
     with app.app_context():
