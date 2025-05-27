@@ -1,16 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Prediction Markets - {% block title %}{% endblock %}</title>
+
+    <!-- Tailwind CSS and Icons -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Optional: Extra Head -->
+    {% block extra_head %}{% endblock %}
 </head>
-<body class="bg-gray-50 min-h-screen flex flex-col justify-between">
+<body class="bg-gray-50 min-h-screen flex flex-col justify-between relative overflow-x-hidden">
+
+    <!-- Canvas Background for Admin Pages -->
+    <canvas id="bg-canvas" class="fixed top-0 left-0 w-full h-full z-[-10] opacity-30 hidden"></canvas>
+
+    <!-- Floating Effects for Admin -->
+    <div class="floating-elements pointer-events-none hidden">
+        <div class="floating-element absolute w-5 h-5 bg-white/10 rounded-full animate-float" style="top:10%;left:10%;animation-delay:0s;"></div>
+        <div class="floating-element absolute w-5 h-5 bg-white/10 rounded-full animate-float" style="top:20%;right:15%;animation-delay:2s;"></div>
+        <div class="floating-element absolute w-5 h-5 bg-white/10 rounded-full animate-float" style="bottom:30%;left:20%;animation-delay:4s;"></div>
+        <div class="floating-element absolute w-5 h-5 bg-white/10 rounded-full animate-float" style="bottom:10%;right:25%;animation-delay:6s;"></div>
+    </div>
 
     <!-- Navbar -->
-    <nav class="bg-white shadow-md">
+    <nav class="bg-white shadow-md z-10">
         <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
             <a href="/" class="text-xl font-bold text-blue-600 hover:text-blue-800 transition">PredictMarket</a>
             <div class="flex items-center space-x-4">
@@ -30,23 +46,24 @@
     <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-            {% for category, message in messages %}
-                <div class="max-w-7xl mx-auto px-4 mt-4">
-                    <div class="rounded-md p-4 {% if category == 'error' %}bg-red-100 text-red-700{% else %}bg-green-100 text-green-700{% endif %} shadow">
+            <div class="fixed top-5 right-5 z-50 space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-lg px-4 py-3 shadow-lg text-white font-semibold transition transform animate-slideIn 
+                        {% if category == 'error' %}bg-red-500{% else %}bg-green-500{% endif %}">
                         {{ message }}
                     </div>
-                </div>
-            {% endfor %}
+                {% endfor %}
+            </div>
         {% endif %}
     {% endwith %}
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 py-8 flex-grow">
+    <main class="max-w-7xl mx-auto px-4 py-8 w-full flex-grow z-10">
         {% block content %}{% endblock %}
     </main>
 
     <!-- Footer -->
-    <footer class="bg-white border-t shadow-sm mt-12">
+    <footer class="bg-white border-t shadow-sm mt-12 z-10">
         <div class="max-w-7xl mx-auto px-4 py-6 flex flex-col md:flex-row justify-between items-center text-sm text-gray-500">
             <p>&copy; {{ current_year or 2025 }} PredictMarket. All rights reserved.</p>
             <div class="flex space-x-4 mt-2 md:mt-0">
@@ -57,5 +74,15 @@
         </div>
     </footer>
 
+    <!-- JS for Admin Animation (conditionally included) -->
+    {% block scripts %}{% endblock %}
+
+    <script>
+        // Show background and floaters only on admin route
+        if (window.location.pathname.startsWith('/admin')) {
+            document.getElementById('bg-canvas')?.classList.remove('hidden');
+            document.querySelector('.floating-elements')?.classList.remove('hidden');
+        }
+    </script>
 </body>
 </html>

@@ -26,9 +26,12 @@ class Market(db.Model):
     title = db.Column(db.String, nullable=False)
     description = db.Column(db.Text)
     end_date = db.Column(db.DateTime)
+    is_featured = db.Column(db.Boolean, default=False)
     status = db.Column(db.Enum(MarketStatus), default=MarketStatus.active)
     outcome = db.Column(db.Enum(Outcome), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    price_yes = db.Column(db.Float, nullable=False, default=0.5)
+    price_no = db.Column(db.Float, nullable=False, default=0.5)
 
 
 # Trade Table

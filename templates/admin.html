@@ -1,57 +1,312 @@
 {% extends "base.html" %}
+{% block title %}Admin Control Panel{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        }
+
+        .bg-admin {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hero {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            padding: 3rem;
+            margin-bottom: 3rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            animation: slideDown 0.8s ease-out;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: conic-gradient(from 0deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            animation: rotate 10s linear infinite;
+        }
+
+        .form-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 2.5rem;
+            margin-bottom: 3rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            animation: slideUp 0.8s ease-out 0.2s both;
+        }
+
+        .market-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 16px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+        }
+
+        .market-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 1rem 1.5rem;
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            border-radius: 12px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .create-btn {
+            width: 100%;
+            padding: 1.2rem 2rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .create-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .section-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 2rem;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .markets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 2rem;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }    </style>
+{% endblock %}
 
 {% block content %}
-
-<!-- Hero Header -->
-<div class="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-8 rounded-xl shadow mb-8">
-    <h1 class="text-4xl font-bold">🛠️ Admin Control Panel</h1>
-    <p class="text-lg mt-2">Create, manage, and resolve prediction markets with ease.</p>
-</div>
-
-<!-- Flash Message -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="mb-6 px-6 py-4 rounded text-sm font-medium 
-                  {% if category == 'error' %}bg-red-100 text-red-800
-                  {% else %}bg-green-100 text-green-800{% endif %}">
-        {{ message }}
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
-
-<!-- Market Creation Form -->
-<div class="bg-white rounded-lg shadow-md p-6 mb-10">
-    <h2 class="text-2xl font-semibold text-gray-800 mb-6">➕ Create New Market</h2>
-    <form method="POST" class="grid md:grid-cols-2 gap-4">
-        <input type="text" name="title" placeholder="Market Title" required class="border p-3 rounded shadow-sm">
-        <input type="text" name="description" placeholder="Market Description" required class="border p-3 rounded shadow-sm">
-        <input type="date" name="end_date" required class="border p-3 rounded shadow-sm">
-        <input type="number" step="0.01" name="price_yes" placeholder="Price Yes (e.g. 0.55)" required class="border p-3 rounded shadow-sm">
-        <input type="number" step="0.01" name="price_no" placeholder="Price No (e.g. 0.45)" required class="border p-3 rounded shadow-sm">
-        <button type="submit" class="col-span-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded text-lg font-bold transition hover:scale-105">
-            Create Market
-        </button>
-    </form>
-</div>
-
-<!-- Market Cards -->
-<h3 class="text-xl font-semibold text-gray-800 mb-4">📊 Existing Markets</h3>
-<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-    {% for market in markets %}
-    <div class="bg-white p-5 rounded-xl shadow hover:shadow-lg transition transform hover:-translate-y-1">
-        <div class="flex justify-between items-center mb-2">
-            <h4 class="text-lg font-bold text-blue-700">{{ market.title }}</h4>
-            <span class="text-xs text-gray-400">{{ market.end_date }}</span>
+    <div class="container">
+        <!-- Hero Section -->
+        <div class="hero">
+            <div class="relative z-[2]">
+                <h1 class="text-5xl font-extrabold text-white mb-4">🛠️ Admin Control Panel</h1>
+                <p class="text-xl text-white/90 font-light">Create, manage, and resolve prediction markets with immersive control</p>
+            </div>
         </div>
-        <p class="text-gray-600 text-sm mb-3">{{ market.description }}</p>
-        <div class="flex justify-between text-sm font-medium">
-            <span class="text-green-600">Yes: {{ market.price_yes }}</span>
-            <span class="text-red-600">No: {{ market.price_no }}</span>
+
+        <!-- Market Creation Form -->
+        <div class="form-card">
+            <h2 class="text-3xl font-bold text-gray-800 mb-8">✨ Create New Market</h2>
+            <form id="market-form" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="space-y-2">
+                    <input type="text" name="title" placeholder="Market Title" required class="input-field">
+                </div>
+                <div class="space-y-2">
+                    <input type="text" name="description" placeholder="Market Description" required class="input-field">
+                </div>
+                <div class="space-y-2">
+                    <input type="date" name="end_date" required class="input-field">
+                </div>
+                <div class="space-y-2">
+                    <input type="number" step="0.01" name="price_yes" placeholder="Price Yes (e.g. 0.55)" required class="input-field">
+                </div>
+                <div class="space-y-2">
+                    <input type="number" step="0.01" name="price_no" placeholder="Price No (e.g. 0.45)" required class="input-field">
+                </div>
+                <button type="submit" class="create-btn col-span-2">Create Market</button>
+                <button type="button" id="create-btc-btn" class="create-btn col-span-2">
+                    🚀 Create BTC Market from CoinDCX
+                </button>
+            </form>
+        </div>
+
+        <!-- Markets Section -->
+        <div class="space-y-8">
+            <h3 class="section-title">📊 Active Markets</h3>
+            <div class="markets-grid" id="markets-container">
+                {% for market in markets %}
+                <div class="market-card">
+                    <div class="flex justify-between items-start mb-4">
+                        <h4 class="text-xl font-bold text-gray-800">{{ market.title }}</h4>
+                        <span class="text-sm px-3 py-1 bg-blue-50 text-blue-600 rounded-full">{{ market.end_date.strftime('%Y-%m-%d') }}</span>
+                    </div>
+                    <p class="text-gray-600 mb-6">{{ market.description }}</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-gradient-to-r from-green-500 to-green-600 text-white p-3 rounded-lg text-center font-semibold">
+                            Yes: {{ "%.2f"|format(market.price_yes) }}
+                        </div>
+                        <div class="bg-gradient-to-r from-red-500 to-red-600 text-white p-3 rounded-lg text-center font-semibold">
+                            No: {{ "%.2f"|format(market.price_no) }}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
-    {% endfor %}
-</div>
 
+    <script>
+        // Three.js background animation
+        let scene, camera, renderer, particles;
+
+        function initBackground() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('bg-canvas'), alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            const geometry = new THREE.BufferGeometry();
+            const positions = [];
+            const colors = [];
+
+            for (let i = 0; i < 2000; i++) {
+                positions.push((Math.random() - 0.5) * 2000);
+                positions.push((Math.random() - 0.5) * 2000);
+                positions.push((Math.random() - 0.5) * 2000);
+                colors.push(Math.random(), Math.random(), 1);
+            }
+
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({ size: 2, vertexColors: true });
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+
+            camera.position.z = 1000;
+        }
+
+        function animateBackground() {
+            requestAnimationFrame(animateBackground);
+            if (particles) {
+                particles.rotation.x += 0.0005;
+                particles.rotation.y += 0.001;
+            }
+            renderer.render(scene, camera);
+        }
+
+        // Form handling
+        document.getElementById('market-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            
+            try {
+                const response = await fetch('/admin', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    const error = await response.text();
+                    alert('Failed to create market: ' + error);
+                }
+            } catch (error) {
+                alert('Error creating market');
+                console.error(error);
+            }
+        });
+
+        // BTC Market creation
+        document.getElementById('create-btc-btn').addEventListener('click', async () => {
+            try {
+                const res = await fetch('/admin/create-btc-market', {
+                    method: 'POST'
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    location.reload();
+                } else {
+                    alert(result.message || 'Failed to create BTC market');
+                }
+            } catch (err) {
+                alert("Error creating BTC market");
+                console.error(err);
+            }
+        });
+
+        // Initialize
+        window.addEventListener('load', () => {
+            initBackground();
+            animateBackground();
+        });
+
+        window.addEventListener('resize', () => {
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }        });
+    </script>
 {% endblock %}

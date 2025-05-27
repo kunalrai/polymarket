@@ -10,6 +10,8 @@ env:
   SECRET_KEY: ${{ secrets.SECRET_KEY }}
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+  ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+  ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
 
 jobs:
   build-and-deploy:

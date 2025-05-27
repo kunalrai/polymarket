@@ -1,7 +1,10 @@
-from flask import Flask, render_template, redirect, url_for, flash, session,request
+from datetime import datetime
+from flask import Flask, jsonify, render_template, redirect, url_for, flash, session,request
 from dotenv import load_dotenv
 from flask_sqlalchemy import SQLAlchemy
 import os
+from flask_cors import CORS
+import requests
 from utils.supabase_client import get_supabase_client
 from models.models import Market, Trade
 from functools import wraps
@@ -14,7 +17,7 @@ app.secret_key = "secret_key"  # Change this to a secure key in production
 supabase = get_supabase_client()
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///markets.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
+CORS(app) 
 db.init_app(app)
 
 def admin_required(f):
@@ -30,26 +33,15 @@ def admin_required(f):
 
 @app.route('/')
 def home():
-    # Sample static data — replace with Supabase query for real-time
-    featured_markets = [
-        {
-            "id": 1,
-            "title": "Will BTC cross $70K by June?",
-            "description": "Predict if Bitcoin will break the $70K barrier.",
-            "end_date": "2025-06-30",
-            "price_yes": "0.58",
-            "price_no": "0.42"
-        },
-        {
-            "id": 2,
-            "title": "Will the next US president be Democrat?",
-            "description": "Trade on the outcome of the 2024 US election.",
-            "end_date": "2025-11-08",
-            "price_yes": "0.64",
-            "price_no": "0.36"
-        }
-    ]
-    return render_template("home.html", featured_markets=featured_markets)
+  
+    featured_markets = Market.query \
+        .filter(Market.status == 'active') \
+        .filter(Market.end_date > datetime.utcnow()) \
+        .order_by(Market.created_at.desc()) \
+        .limit(6) \
+        .all()
+    
+    return render_template('home.html', featured_markets=featured_markets)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -87,15 +79,62 @@ def register():
         email = request.form.get('email')
         password = request.form.get('password')
         
+        # Input validation
+        if not email or not password:
+            flash('Email and password are required', 'error')
+            return render_template('auth/register.html')
+        
+        if len(password) < 6:
+            flash('Password must be at least 6 characters long', 'error')
+            return render_template('auth/register.html')
+        
         try:
-            response = supabase.auth.sign_up({
-                "email": email,
-                "password": password
-            })
-            flash('Registration successful! Please log in.', 'success')
-            return redirect(url_for('login'))
+            # Validate Supabase configuration first
+            from utils.supabase_client import validate_supabase_config
+            is_valid, error_message = validate_supabase_config()
+            
+            if not is_valid:
+                app.logger.error(f"Supabase configuration error: {error_message}")
+                flash('Server configuration error. Please try again later.', 'error')
+                return render_template('auth/register.html')
+            
+            # Get Supabase client
+            client = get_supabase_client()
+            if not client:
+                flash('Unable to connect to authentication service', 'error')
+                return render_template('auth/register.html')
+            
+            # Attempt to register with retry
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = client.auth.sign_up({
+                        "email": email,
+                        "password": password,
+                        "options": {
+                            "data": {
+                                "email": email
+                            }
+                        }
+                    })
+                    
+                    if hasattr(response.user, 'id'):
+                        flash('Registration successful! Please check your email to confirm your account.', 'success')
+                        return redirect(url_for('login'))
+                    break
+                except Exception as e:
+                    if "User already registered" in str(e):
+                        flash('This email is already registered. Please login instead.', 'error')
+                        return redirect(url_for('login'))
+                    elif attempt < max_retries - 1:
+                        app.logger.warning(f"Registration attempt {attempt + 1} failed: {str(e)}")
+                        continue
+                    else:
+                        raise
+                        
         except Exception as e:
-            flash(f'Registration failed: {e}', 'error')
+            app.logger.error(f"Registration error: {str(e)}")
+            flash('Registration failed. Please try again later.', 'error')
     
     return render_template('auth/register.html')
 
@@ -131,14 +170,56 @@ def admin():
     markets = Market.query.order_by(Market.end_date.desc()).all()
     return render_template('admin.html', markets=markets)
 
-@app.route("/market/<int:market_id>")
+@app.route('/admin/create-btc-market',methods=['GET', 'POST'])
+@admin_required
+
+def create_btc_market():
+    try:
+        # 1. Fetch BTC price from CoinGecko
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+        response = requests.get(url, verify=False)
+        response.raise_for_status()
+        price = float(response.json()['bitcoin']['usd'])
+
+        # 2. Generate dynamic question
+        rounded_price = round(price, -2)  # round to nearest hundred
+        threshold = rounded_price + 2000 if price < 70000 else rounded_price - 2000
+        trend = "cross" if price < threshold else "fall below"
+        title = f"Will BTC {trend} ${threshold:,.0f} by June 2025?"
+        description = f"Live market based on current BTC price (${price:,.2f}) using CoinGecko data."
+
+        # 3. Create Market
+        end_date = datetime(2025, 6, 30)
+        market = Market(
+            title=title,
+            description=description,
+            end_date=end_date
+        )
+        db.session.add(market)
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "BTC market created",
+            "market": {
+                "title": market.title,
+                "description": market.description,
+                "end_date": end_date.strftime('%Y-%m-%d'),
+                "price_yes": 0.58 if price < threshold else 0.35,
+                "price_no": 1 - (0.58 if price < threshold else 0.35)
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
+    
+@app.route("/market/<string:market_id>")
 def market_detail(market_id):
     market = Market.query.get(market_id)
     if not market:
         flash("Market not found", "error")
         return redirect(url_for('home'))
 
-    trades = Trade.query.filter_by(market_id=market_id).order_by(Trade.timestamp.desc()).all()
+    trades = Trade.query.filter_by(market_id=market_id).order_by(Trade.created_at.desc()).all()
 
     return render_template("market.html", market=market, trades=trades)
 
