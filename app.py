@@ -10,8 +10,28 @@ app.secret_key = os.getenv('SECRET_KEY')
 supabase = get_supabase_client()
 
 @app.route('/')
-def index():
-    return redirect(url_for('login'))
+def home():
+    # Sample static data — replace with Supabase query for real-time
+    featured_markets = [
+        {
+            "id": 1,
+            "title": "Will BTC cross $70K by June?",
+            "description": "Predict if Bitcoin will break the $70K barrier.",
+            "end_date": "2025-06-30",
+            "price_yes": "0.58",
+            "price_no": "0.42"
+        },
+        {
+            "id": 2,
+            "title": "Will the next US president be Democrat?",
+            "description": "Trade on the outcome of the 2024 US election.",
+            "end_date": "2025-11-08",
+            "price_yes": "0.64",
+            "price_no": "0.36"
+        }
+    ]
+    return render_template("home.html", featured_markets=featured_markets)
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -46,7 +66,7 @@ def register():
             flash('Registration successful! Please log in.', 'success')
             return redirect(url_for('login'))
         except Exception as e:
-            flash('Registration failed', 'error')
+            flash('Registration failed', {e})
     
     return render_template('auth/register.html')
 
