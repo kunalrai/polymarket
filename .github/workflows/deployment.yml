@@ -10,7 +10,7 @@ env:
   SECRET_KEY: ${{ secrets.SECRET_KEY }}
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -33,7 +33,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip list | grep -i limiter
+        
     
     - name: Create .deployment file
       run: |
