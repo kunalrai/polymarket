@@ -143,7 +143,18 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+@app.route('/session', methods=['POST'])
+def create_session():
+    data = request.get_json()
+    access_token = data.get('access_token')
+    refresh_token = data.get('refresh_token')
 
+    # Decode JWT to extract user info if needed
+    session['user'] = {
+        'access_token': access_token,
+        'refresh_token': refresh_token
+    }
+    return '', 204
 
 @app.route('/admin', methods=['GET', 'POST'])
 @admin_required
