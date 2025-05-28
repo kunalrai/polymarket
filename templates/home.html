@@ -1,14 +1,141 @@
 {% extends "base.html" %}
 {% block title %}Home{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+    .hero-banner {
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .hero-content {
+        position: relative;
+        z-index: 2;
+    }
+
+    .floating-image {
+        position: absolute;
+        width: 180px;
+        height: 180px;
+        filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.2));
+        animation: float 6s ease-in-out infinite;
+        opacity: 0.9;
+    }
+
+    .trade-image {
+        top: 10%;
+        left: 10%;
+        animation-delay: 0s;
+    }
+
+    .prediction-image {
+        top: 20%;
+        right: 15%;
+        animation-delay: 2s;
+    }
+
+    .reward-image {
+        bottom: 10%;
+        left: 20%;
+        animation-delay: 4s;
+    }
+
+   
+    @keyframes float {
+        0%, 100% {
+            transform: translateY(0) rotate(0deg);
+        }
+        50% {
+            transform: translateY(-20px) rotate(5deg);
+        }
+    }
+
+    #bg-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+        opacity: 0.3;
+    }
+
+    @keyframes fade-in-up {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in-up {
+        animation: fade-in-up 0.8s ease-out both;
+    }
+    .animate-fade-in-up.delay-100 {
+        animation-delay: 0.1s;
+    }
+    .animate-fade-in-up.delay-200 {
+        animation-delay: 0.2s;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
+<!-- Category Navigation -->
+<div class="bg-white shadow-sm mb-8 overflow-x-auto">
+    <div class="container mx-auto px-4">
+        <div class="flex items-center space-x-8 py-4 text-gray-600 whitespace-nowrap">
+            <a href="/markets" class="flex items-center space-x-2 hover:text-blue-600 transition">
+                <i class="fas fa-globe text-lg"></i>
+                <span>All Markets</span>
+            </a>
+            <a href="/markets?category=Crypto" class="flex items-center space-x-2 hover:text-blue-600 transition">
+                <i class="fab fa-bitcoin text-lg"></i>
+                <span>Crypto</span>
+            </a>
+            <a href="/markets?category=Politics" class="flex items-center space-x-2 hover:text-blue-600 transition">
+                <i class="fas fa-landmark text-lg"></i>
+                <span>Politics</span>
+            </a>
+            <a href="/markets?category=Sports" class="flex items-center space-x-2 hover:text-blue-600 transition">
+                <i class="fas fa-futbol text-lg"></i>
+                <span>Sports</span>
+            </a>
+            <a href="/markets?category=Technology" class="flex items-center space-x-2 hover:text-blue-600 transition">
+                <i class="fas fa-microchip text-lg"></i>
+                <span>Technology</span>
+            </a>
+            <a href="/markets?category=Entertainment" class="flex items-center space-x-2 hover:text-blue-600 transition">
+                <i class="fas fa-film text-lg"></i>
+                <span>Entertainment</span>
+            </a>
+            <a href="/markets" class="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition">
+                <i class="fas fa-ellipsis-h text-lg"></i>
+                <span>More Categories</span>
+            </a>
+        </div>
+    </div>
+</div>
+
 <!-- Hero Section -->
-<section class="text-center py-20 px-6 bg-gradient-to-br from-blue-100 to-purple-100 rounded-3xl shadow-lg animate-fade-in-up">
-    <h1 class="text-5xl font-extrabold text-blue-800 mb-4 drop-shadow">Welcome to PredictMarket</h1>
-    <p class="text-lg text-gray-700 mb-6 max-w-2xl mx-auto">Trade on real-world events. Make smart predictions. Earn rewards.</p>
-    <a href="/markets" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-lg shadow-md transition">
-        Explore Markets
-    </a>
+<section class="hero-banner min-h-[400px] py-20 px-6 rounded-3xl shadow-lg relative overflow-hidden">
+    <canvas id="bg-canvas"></canvas>
+    
+    <!-- Floating Images -->
+    <img src="https://cdn-icons-png.flaticon.com/512/4628/4628653.png" alt="Predict" class="floating-image prediction-image">
+    <img src="https://cdn-icons-png.flaticon.com/512/4149/4149677.png" alt="Reward" class="floating-image reward-image">
+    <!-- Currency Images -->
+    <img src="https://cdn-icons-png.flaticon.com/512/781/781760.png" alt="Money" class="floating-image money-image">
+    
+    <div class="hero-content text-center relative z-10">
+        <h1 class="text-6xl font-extrabold text-white mb-6 drop-shadow-lg">
+            Welcome to PredictMarket
+        </h1>
+        <p class="text-xl text-white/90 mb-8 max-w-2xl mx-auto font-light">
+            Trade on real-world events. Make smart predictions. Earn rewards.
+        </p>
+        <a href="/markets" class="bg-white text-blue-600 hover:bg-blue-50 font-semibold px-8 py-4 rounded-xl shadow-lg transition transform hover:scale-105">
+            Explore Markets
+        </a>
+    </div>
 </section>
 
 <!-- Featured Markets -->
@@ -52,8 +179,6 @@
     {% endif %}
 </section>
 
-
-
 <!-- How It Works -->
 <section class="mt-24 animate-fade-in-up delay-100">
     <h2 class="text-3xl font-bold text-center text-gray-800 mb-12">How It Works</h2>
@@ -82,19 +207,79 @@
     </a>
 </section>
 
-<style>
-@keyframes fade-in-up {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-in-up {
-    animation: fade-in-up 0.8s ease-out both;
-}
-.animate-fade-in-up.delay-100 {
-    animation-delay: 0.1s;
-}
-.animate-fade-in-up.delay-200 {
-    animation-delay: 0.2s;
-}
-</style>
+<script>
+    // Three.js animation
+    let scene, camera, renderer, particles;
+
+    function initBackground() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        // Get the canvas element
+        const canvas = document.getElementById('bg-canvas');
+        renderer = new THREE.WebGLRenderer({ 
+            canvas: canvas,
+            alpha: true,
+            antialias: true
+        });
+        
+        // Set size to match hero section
+        const heroSection = document.querySelector('.hero-banner');
+        renderer.setSize(heroSection.offsetWidth, heroSection.offsetHeight);
+
+        // Create particles
+        const geometry = new THREE.BufferGeometry();
+        const positions = [];
+        const colors = [];
+
+        for (let i = 0; i < 2000; i++) {
+            positions.push((Math.random() - 0.5) * 2000);
+            positions.push((Math.random() - 0.5) * 2000);
+            positions.push((Math.random() - 0.5) * 2000);
+            colors.push(1); // More white/blue color
+            colors.push(1);
+            colors.push(1);
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: 3,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+
+        camera.position.z = 1000;
+    }
+
+    function animateBackground() {
+        requestAnimationFrame(animateBackground);
+        if (particles) {
+            particles.rotation.x += 0.0002;
+            particles.rotation.y += 0.0005;
+        }
+        renderer.render(scene, camera);
+    }
+
+    // Initialize on load
+    window.addEventListener('load', () => {
+        initBackground();
+        animateBackground();
+    });
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+        if (camera && renderer) {
+            const heroSection = document.querySelector('.hero-banner');
+            camera.aspect = heroSection.offsetWidth / heroSection.offsetHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(heroSection.offsetWidth, heroSection.offsetHeight);
+        }
+    });
+</script>
 {% endblock %}

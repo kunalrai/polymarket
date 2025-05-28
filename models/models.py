@@ -25,6 +25,7 @@ class Market(db.Model):
     id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
     title = db.Column(db.String, nullable=False)
     description = db.Column(db.Text)
+    category = db.Column(db.String, nullable=True)  # New field for market category
     end_date = db.Column(db.DateTime)
     is_featured = db.Column(db.Boolean, default=False)
     status = db.Column(db.Enum(MarketStatus), default=MarketStatus.active)
@@ -32,6 +33,7 @@ class Market(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     price_yes = db.Column(db.Float, nullable=False, default=0.5)
     price_no = db.Column(db.Float, nullable=False, default=0.5)
+    volume = db.Column(db.Float, nullable=False, default=0.0)  # Adding volume field as well
 
 
 # Trade Table

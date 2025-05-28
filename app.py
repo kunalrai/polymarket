@@ -318,6 +318,54 @@ def set_new_password():
 
     return render_template('auth/set_new_password.html', token=access_token)
 
+@app.route('/markets')
+def explore_markets():
+    # Get query parameters for filtering and sorting
+    category = request.args.get('category', 'all')
+    sort_by = request.args.get('sort', 'created_at')
+    search = request.args.get('search', '')
+    
+    # Base query
+    query = Market.query.filter(Market.status == 'active')
+    
+    # Apply search filter if provided
+    if search:
+        query = query.filter(Market.title.ilike(f'%{search}%'))
+    
+    # Apply category filter if provided and not 'all'
+    if category != 'all':
+        if category == 'uncategorized':
+            query = query.filter(Market.category.is_(None))
+        else:
+            query = query.filter(Market.category == category)
+    
+    # Apply sorting
+    if sort_by == 'end_date':
+        query = query.order_by(Market.end_date.asc())
+    elif sort_by == 'volume':
+        query = query.order_by(Market.volume.desc())
+    else:  # default to created_at
+        query = query.order_by(Market.created_at.desc())
+    
+    # Get all markets matching the criteria
+    markets = query.all()
+    
+    # Define default categories
+    default_categories = ['Crypto', 'Politics', 'Sports', 'Technology', 'Entertainment']
+    
+    # Get existing categories from the database
+    db_categories = db.session.query(Market.category).distinct().all()
+    db_categories = [cat[0] for cat in db_categories if cat[0]]  # Remove None values
+    
+    # Combine default and existing categories, remove duplicates
+    categories = sorted(list(set(default_categories + db_categories)))
+    
+    return render_template('explore_markets.html', 
+                         markets=markets,
+                         categories=categories,
+                         current_category=category,
+                         current_sort=sort_by,
+                         search_query=search)
 
 if __name__ == '__main__':
     with app.app_context():
