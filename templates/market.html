@@ -42,7 +42,7 @@
         <ul class="divide-y divide-gray-200">
             {% for trade in trades %}
             <li class="py-2 flex justify-between text-sm">
-                <span>{{ trade.timestamp.strftime('%Y-%m-%d %H:%M') }}</span>
+                <span>{{ trade.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
                 <span>{{ trade.user_id }} - {{ trade.share_type }} @ {{ trade.amount }}</span>
             </li>
             {% endfor %}

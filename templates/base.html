@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="google-site-verification" content="NAWI6FnJJPzevtpdgKao-6qYPbUzsyJ-KCSpWTMSklU" />
     <title>Prediction Markets - {% block title %}{% endblock %}</title>
 
     <!-- Tailwind CSS and Icons -->
@@ -49,7 +50,7 @@
             <div class="fixed top-5 right-5 z-50 space-y-2">
                 {% for category, message in messages %}
                     <div class="rounded-lg px-4 py-3 shadow-lg text-white font-semibold transition transform animate-slideIn 
-                        {% if category == 'error' %}bg-red-500{% else %}bg-green-100{% endif %}">
+                        {% if category == 'error' %}bg-red-500{% else %}bg-green-500{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
