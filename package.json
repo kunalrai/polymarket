@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "convex dev",
-    "start": "serve frontend/dist -s -l %PORT%"
+    "start": "serve frontend/dist -s -l $PORT"
   },
   "dependencies": {
     "@auth/core": "^0.34.2",
