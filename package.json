@@ -1,0 +1,10 @@
+{
+  "name": "polymarket",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "convex dev"
+  },
+  "dependencies": {
+    "convex": "^1.33.0"
+  }
+}

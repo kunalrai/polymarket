@@ -1,373 +1,339 @@
-from datetime import datetime
-from flask import Flask, jsonify, render_template, redirect, url_for, flash, session,request
+from datetime import datetime, timedelta
+from flask import Flask, jsonify, render_template, redirect, url_for, flash, session, request
 from dotenv import load_dotenv
-from flask_sqlalchemy import SQLAlchemy
-import os
 from flask_cors import CORS
+import os
 import requests
-from utils.supabase_client import get_supabase_client
-from models.models import Market, Trade
+import bcrypt
+import secrets
 from functools import wraps
-from models.models import db
+from types import SimpleNamespace
+from utils.convex_client import get_convex_client
 
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = "secret_key"  # Change this to a secure key in production
-supabase = get_supabase_client()
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///markets.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-CORS(app) 
-db.init_app(app)
+app.secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
+CORS(app)
+
+convex = get_convex_client()
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _to_obj(d):
+    """Recursively convert a Convex result dict to an object with attribute access.
+    Maps _id -> id and converts millisecond timestamps to datetime objects."""
+    TIMESTAMP_FIELDS = {"end_date", "created_at", "timestamp", "resolved_at", "expires_at"}
+    if isinstance(d, dict):
+        obj = {}
+        for k, v in d.items():
+            attr = "id" if k == "_id" else k
+            if k in TIMESTAMP_FIELDS and isinstance(v, (int, float)):
+                obj[attr] = datetime.utcfromtimestamp(v / 1000)
+            else:
+                obj[attr] = _to_obj(v)
+        return SimpleNamespace(**obj)
+    if isinstance(d, list):
+        return [_to_obj(item) for item in d]
+    return d
+
 
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         admin_email = os.getenv("ADMIN_EMAIL")
-        if 'user' not in session or session['user']['email'] != admin_email:
+        if "user" not in session or session["user"].get("email") != admin_email:
             flash("Unauthorized access", "error")
-            return redirect(url_for('login'))
+            return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated_function
 
 
-@app.route('/')
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+@app.route("/")
 def home():
-  
-    featured_markets = Market.query \
-        .filter(Market.status == 'active') \
-        .filter(Market.end_date > datetime.utcnow()) \
-        .order_by(Market.created_at.desc()) \
-        .limit(6) \
-        .all()
-    
-    return render_template('home.html', featured_markets=featured_markets)
+    results = convex.query("markets:getActive")
+    featured_markets = [_to_obj(m) for m in (results or [])]
+    return render_template("home.html", featured_markets=featured_markets)
 
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
 
-        # Check if it's the admin
         admin_email = os.getenv("ADMIN_EMAIL")
         admin_password = os.getenv("ADMIN_PASSWORD")
 
         if email == admin_email and password == admin_password:
-            session['user'] = {"email": email, "is_admin": True}
-            flash('Logged in as Admin!', 'success')
-            return redirect(url_for('admin'))
+            session["user"] = {"email": email, "is_admin": True}
+            flash("Logged in as Admin!", "success")
+            return redirect(url_for("admin"))
 
-        # Else try Supabase auth
-        try:
-            response = supabase.auth.sign_in_with_password({
-                "email": email,
-                "password": password
-            })
-            session['user'] = {"email": email, "is_admin": False}
-            flash('Successfully logged in!', 'success')
-            return redirect(url_for('home'))
-        except Exception as e:
-            flash('Invalid credentials', 'error')
+        # Look up user in Convex
+        user = convex.query("users:getByEmail", {"email": email})
+        if user and bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
+            session["user"] = {"email": email, "is_admin": False}
+            flash("Successfully logged in!", "success")
+            return redirect(url_for("home"))
 
-    return render_template('auth/login.html')
+        flash("Invalid credentials", "error")
 
-@app.route('/register', methods=['GET', 'POST'])
+    return render_template("auth/login.html")
+
+
+@app.route("/register", methods=["GET", "POST"])
 def register():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
-        
-        # Input validation
-        if not email or not password:
-            flash('Email and password are required', 'error')
-            return render_template('auth/register.html')
-        
-        if len(password) < 6:
-            flash('Password must be at least 6 characters long', 'error')
-            return render_template('auth/register.html')
-        
-        try:
-            # Validate Supabase configuration first
-            from utils.supabase_client import validate_supabase_config
-            is_valid, error_message = validate_supabase_config()
-            
-            if not is_valid:
-                app.logger.error(f"Supabase configuration error: {error_message}")
-                flash('Server configuration error. Please try again later.', 'error')
-                return render_template('auth/register.html')
-            
-            # Get Supabase client
-            client = get_supabase_client()
-            if not client:
-                flash('Unable to connect to authentication service', 'error')
-                return render_template('auth/register.html')
-            
-            # Attempt to register with retry
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    response = client.auth.sign_up({
-                        "email": email,
-                        "password": password,
-                        "options": {
-                            "data": {
-                                "email": email
-                            }
-                        }
-                    })
-                    
-                    if hasattr(response.user, 'id'):
-                        flash('Registration successful! Please check your email to confirm your account.', 'success')
-                        return redirect(url_for('login'))
-                    break
-                except Exception as e:
-                    if "User already registered" in str(e):
-                        flash('This email is already registered. Please login instead.', 'error')
-                        return redirect(url_for('login'))
-                    elif attempt < max_retries - 1:
-                        app.logger.warning(f"Registration attempt {attempt + 1} failed: {str(e)}")
-                        continue
-                    else:
-                        raise
-                        
-        except Exception as e:
-            app.logger.error(f"Registration error: {str(e)}")
-            flash('Registration failed. Please try again later.', 'error')
-    
-    return render_template('auth/register.html')
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
 
-@app.route('/logout')
+        if not email or not password:
+            flash("Email and password are required", "error")
+            return render_template("auth/register.html")
+
+        if len(password) < 6:
+            flash("Password must be at least 6 characters long", "error")
+            return render_template("auth/register.html")
+
+        try:
+            password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+            convex.mutation("users:create", {"email": email, "password_hash": password_hash})
+            flash("Registration successful! You can now log in.", "success")
+            return redirect(url_for("login"))
+        except Exception as e:
+            if "already registered" in str(e).lower():
+                flash("This email is already registered. Please login instead.", "error")
+                return redirect(url_for("login"))
+            app.logger.error(f"Registration error: {e}")
+            flash("Registration failed. Please try again later.", "error")
+
+    return render_template("auth/register.html")
+
+
+@app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for('login'))
+    return redirect(url_for("login"))
 
-@app.route('/session', methods=['POST'])
-def create_session():
-    data = request.get_json()
-    access_token = data.get('access_token')
-    refresh_token = data.get('refresh_token')
 
-    # Decode JWT to extract user info if needed
-    session['user'] = {
-        'access_token': access_token,
-        'refresh_token': refresh_token
-    }
-    return '', 204
-
-@app.route('/admin', methods=['GET', 'POST'])
+@app.route("/admin", methods=["GET", "POST"])
 @admin_required
 def admin():
-    if request.method == 'POST':
-        title = request.form.get('title')
-        description = request.form.get('description')
-        end_date = request.form.get('end_date')
-        price_yes = float(request.form.get('price_yes'))
-        price_no = float(request.form.get('price_no'))
+    if request.method == "POST":
+        title = request.form.get("title")
+        description = request.form.get("description")
+        end_date_str = request.form.get("end_date")
+        price_yes = float(request.form.get("price_yes"))
+        price_no = float(request.form.get("price_no"))
 
-        new_market = Market(
-            title=title,
-            description=description,
-            end_date=end_date,
-            price_yes=price_yes,
-            price_no=price_no
-        )
-        db.session.add(new_market)
-        db.session.commit()
+        end_date_ms = int(datetime.strptime(end_date_str, "%Y-%m-%d").timestamp() * 1000)
+        convex.mutation("markets:create", {
+            "title": title,
+            "description": description,
+            "end_date": end_date_ms,
+            "price_yes": price_yes,
+            "price_no": price_no,
+        })
         flash("Market created successfully!", "success")
-        return redirect(url_for('admin'))
+        return redirect(url_for("admin"))
 
-    markets = Market.query.order_by(Market.end_date.desc()).all()
-    return render_template('admin.html', markets=markets)
+    results = convex.query("markets:getAll")
+    markets = [_to_obj(m) for m in (results or [])]
+    return render_template("admin.html", markets=markets)
 
-@app.route('/admin/create-btc-market',methods=['GET', 'POST'])
+
+@app.route("/admin/create-btc-market", methods=["GET", "POST"])
 @admin_required
-
 def create_btc_market():
     try:
-        # 1. Fetch BTC price from CoinGecko
         url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
         response = requests.get(url, verify=False)
         response.raise_for_status()
-        price = float(response.json()['bitcoin']['usd'])
+        price = float(response.json()["bitcoin"]["usd"])
 
-        # 2. Generate dynamic question
-        rounded_price = round(price, -2)  # round to nearest hundred
+        rounded_price = round(price, -2)
         threshold = rounded_price + 2000 if price < 70000 else rounded_price - 2000
         trend = "cross" if price < threshold else "fall below"
         title = f"Will BTC {trend} ${threshold:,.0f} by June 2025?"
         description = f"Live market based on current BTC price (${price:,.2f}) using CoinGecko data."
 
-        # 3. Create Market
-        end_date = datetime(2025, 6, 30)
-        market = Market(
-            title=title,
-            description=description,
-            end_date=end_date
-        )
-        db.session.add(market)
-        db.session.commit()
+        end_date_ms = int(datetime(2025, 6, 30).timestamp() * 1000)
+        price_yes = 0.58 if price < threshold else 0.35
+        price_no = round(1 - price_yes, 2)
+
+        convex.mutation("markets:create", {
+            "title": title,
+            "description": description,
+            "end_date": end_date_ms,
+            "price_yes": price_yes,
+            "price_no": price_no,
+        })
 
         return jsonify({
             "success": True,
             "message": "BTC market created",
             "market": {
-                "title": market.title,
-                "description": market.description,
-                "end_date": end_date.strftime('%Y-%m-%d'),
-                "price_yes": 0.58 if price < threshold else 0.35,
-                "price_no": 1 - (0.58 if price < threshold else 0.35)
-            }
+                "title": title,
+                "description": description,
+                "end_date": "2025-06-30",
+                "price_yes": price_yes,
+                "price_no": price_no,
+            },
         })
     except Exception as e:
         return jsonify({"success": False, "message": str(e)})
-    
+
+
 @app.route("/market/<string:market_id>")
 def market_detail(market_id):
-    market = Market.query.get(market_id)
-    if not market:
+    market_data = convex.query("markets:getById", {"id": market_id})
+    if not market_data:
         flash("Market not found", "error")
-        return redirect(url_for('home'))
+        return redirect(url_for("home"))
 
-    trades = Trade.query.filter_by(market_id=market_id).order_by(Trade.created_at.desc()).all()
+    market = _to_obj(market_data)
+    trades_data = convex.query("trades:getByMarket", {"market_id": market_id})
+    trades = [_to_obj(t) for t in (trades_data or [])]
 
     return render_template("market.html", market=market, trades=trades)
 
-@app.route('/trade/<string:market_id>/<string:share_type>', methods=['GET', 'POST'])
+
+@app.route("/trade/<string:market_id>/<string:share_type>", methods=["GET", "POST"])
 def trade(market_id, share_type):
-    if 'user' not in session:
+    if "user" not in session:
         flash("Please log in to trade", "error")
-        return redirect(url_for('login'))
+        return redirect(url_for("login"))
 
-    if share_type not in ['yes', 'no']:
+    if share_type not in ["yes", "no"]:
         flash("Invalid share type", "error")
-        return redirect(url_for('market_detail', market_id=market_id))
+        return redirect(url_for("market_detail", market_id=market_id))
 
-    market = Market.query.get(market_id)
-    if not market:
+    market_data = convex.query("markets:getById", {"id": market_id})
+    if not market_data:
         flash("Market not found", "error")
-        return redirect(url_for('home'))
+        return redirect(url_for("home"))
 
-    if request.method == 'POST':
-        amount = float(request.form.get('amount', 0))
-        user_id = session['user'].get('email')  # Or Supabase UID if you store that
+    market = _to_obj(market_data)
 
-        price = market.price_yes if share_type == 'yes' else market.price_no
+    if request.method == "POST":
+        amount = float(request.form.get("amount", 0))
+        user_id = session["user"]["email"]
+        price = market_data["price_yes"] if share_type == "yes" else market_data["price_no"]
 
         if amount <= 0:
             flash("Amount must be greater than 0", "error")
             return redirect(request.url)
 
-        # Create a Trade
-        trade = Trade(
-            user_id=user_id,
-            market_id=market_id,
-            share_type=share_type,
-            amount=amount,
-            price_at_trade=price
-        )
-        db.session.add(trade)
-        db.session.commit()
+        convex.mutation("trades:create", {
+            "user_id": user_id,
+            "market_id": market_id,
+            "share_type": share_type,
+            "amount": amount,
+            "price_at_trade": price,
+        })
         flash(f"Bought {amount} {share_type.upper()} shares at ${price}", "success")
-        return redirect(url_for('market_detail', market_id=market_id))
+        return redirect(url_for("market_detail", market_id=market_id))
 
-    return render_template('trade.html', market=market, share_type=share_type)
-@app.route('/forgot-password', methods=['GET', 'POST'])
+    return render_template("trade.html", market=market, share_type=share_type)
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
-    if request.method == 'POST':
-        email = request.form.get('email')
+    if request.method == "POST":
+        email = request.form.get("email")
+        user = convex.query("users:getByEmail", {"email": email})
+        if user:
+            token = secrets.token_urlsafe(32)
+            expires_at = int((datetime.utcnow() + timedelta(hours=1)).timestamp() * 1000)
+            convex.mutation("users:createResetToken", {
+                "email": email,
+                "token": token,
+                "expires_at": expires_at,
+            })
+            reset_url = url_for("set_new_password", token=token, _external=True)
+            # TODO: send reset_url via email. For now, log it.
+            app.logger.info(f"Password reset link for {email}: {reset_url}")
+            flash(
+                f"Password reset link generated. Check server logs (configure email sending to deliver it automatically).",
+                "success",
+            )
+        else:
+            # Don't reveal whether the email exists
+            flash("If that email is registered, a reset link has been generated.", "success")
 
-        try:
-            supabase.auth.reset_password_email(email, redirect_to="http://localhost:5000/update-password")
-            flash('Password reset link sent to your email.', 'success')
-        except Exception as e:
-            flash(f"Error: {str(e)}", 'error')
+    return render_template("auth/forgot_password.html")
 
-    return render_template('auth/forgot_password.html')
-@app.route('/update-password')
-def update_password():
-    return render_template('auth/update_password.html')
 
-@app.route('/set-new-password', methods=['GET', 'POST'])
+@app.route("/set-new-password", methods=["GET", "POST"])
 def set_new_password():
-    access_token = request.args.get('token')
-
-    if not access_token:
+    token = request.args.get("token")
+    if not token:
         flash("Invalid or missing token", "error")
-        return redirect(url_for('login'))
+        return redirect(url_for("login"))
 
-    if request.method == 'POST':
-        new_password = request.form.get('new_password')
-
+    if request.method == "POST":
+        new_password = request.form.get("new_password")
         if len(new_password) < 6:
             flash("Password must be at least 6 characters", "error")
-            return render_template('auth/set_new_password.html', token=access_token)
+            return render_template("auth/set_new_password.html", token=token)
 
-        try:
-            # Update password using Supabase admin endpoint
-            supabase.auth.update_user({
-                "password": new_password
-            }, access_token=access_token)
+        record = convex.query("users:getResetToken", {"token": token})
+        if not record:
+            flash("Reset token is invalid or expired", "error")
+            return redirect(url_for("login"))
 
-            flash("Password updated successfully. You can now log in.", "success")
-            return redirect(url_for('login'))
+        expires_at = datetime.utcfromtimestamp(record["expires_at"] / 1000)
+        if datetime.utcnow() > expires_at:
+            convex.mutation("users:deleteResetToken", {"token": token})
+            flash("Reset token has expired. Please request a new one.", "error")
+            return redirect(url_for("forgot_password"))
 
-        except Exception as e:
-            flash(f"Error updating password: {str(e)}", "error")
+        password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+        convex.mutation("users:updatePassword", {
+            "email": record["email"],
+            "password_hash": password_hash,
+        })
+        convex.mutation("users:deleteResetToken", {"token": token})
+        flash("Password updated successfully. You can now log in.", "success")
+        return redirect(url_for("login"))
 
-    return render_template('auth/set_new_password.html', token=access_token)
+    return render_template("auth/set_new_password.html", token=token)
 
-@app.route('/markets')
+
+@app.route("/markets")
 def explore_markets():
-    # Get query parameters for filtering and sorting
-    category = request.args.get('category', 'all')
-    sort_by = request.args.get('sort', 'created_at')
-    search = request.args.get('search', '')
-    
-    # Base query
-    query = Market.query.filter(Market.status == 'active')
-    
-    # Apply search filter if provided
-    if search:
-        query = query.filter(Market.title.ilike(f'%{search}%'))
-    
-    # Apply category filter if provided and not 'all'
-    if category != 'all':
-        if category == 'uncategorized':
-            query = query.filter(Market.category.is_(None))
-        else:
-            query = query.filter(Market.category == category)
-    
-    # Apply sorting
-    if sort_by == 'end_date':
-        query = query.order_by(Market.end_date.asc())
-    elif sort_by == 'volume':
-        query = query.order_by(Market.volume.desc())
-    else:  # default to created_at
-        query = query.order_by(Market.created_at.desc())
-    
-    # Get all markets matching the criteria
-    markets = query.all()
-    
-    # Define default categories
-    default_categories = ['Crypto', 'Politics', 'Sports', 'Technology', 'Entertainment']
-    
-    # Get existing categories from the database
-    db_categories = db.session.query(Market.category).distinct().all()
-    db_categories = [cat[0] for cat in db_categories if cat[0]]  # Remove None values
-    
-    # Combine default and existing categories, remove duplicates
-    categories = sorted(list(set(default_categories + db_categories)))
-    
-    return render_template('explore_markets.html', 
-                         markets=markets,
-                         categories=categories,
-                         current_category=category,
-                         current_sort=sort_by,
-                         search_query=search)
+    category = request.args.get("category", "all")
+    sort_by = request.args.get("sort", "created_at")
+    search = request.args.get("search", "")
 
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+    results = convex.query("markets:searchActive", {
+        "search": search or None,
+        "category": category or None,
+        "sort_by": sort_by or None,
+    })
+    markets = [_to_obj(m) for m in (results or [])]
+
+    db_categories = convex.query("markets:getCategories") or []
+    default_categories = ["Crypto", "Politics", "Sports", "Technology", "Entertainment"]
+    categories = sorted(set(default_categories + list(db_categories)))
+
+    return render_template(
+        "explore_markets.html",
+        markets=markets,
+        categories=categories,
+        current_category=category,
+        current_sort=sort_by,
+        search_query=search,
+    )
+
+
+if __name__ == "__main__":
     app.run(debug=True)

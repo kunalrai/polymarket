@@ -1,10 +1,9 @@
 Flask==2.3.3
 python-dotenv==1.0.0
-supabase==1.0.3
-python-jose==3.3.0
 Flask-WTF==1.1.1
 email-validator==2.0.0.post2
 gunicorn==21.2.0
-sqlalchemy
-flask_sqlalchemy
 flask_cors
+convex
+bcrypt
+requests
