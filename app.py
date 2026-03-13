@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from flask import Flask, jsonify, render_template, redirect, url_for, flash, session, request
+from flask import Flask, jsonify, session, request, send_from_directory
 from dotenv import load_dotenv
 from flask_cors import CORS
 import os
@@ -7,155 +7,261 @@ import requests
 import bcrypt
 import secrets
 from functools import wraps
-from types import SimpleNamespace
 from utils.convex_client import get_convex_client
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=None)
 app.secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
-CORS(app)
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+
+CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
 
 convex = get_convex_client()
+
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "frontend", "dist")
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _to_obj(d):
-    """Recursively convert a Convex result dict to an object with attribute access.
-    Maps _id -> id and converts millisecond timestamps to datetime objects."""
+def convex_to_json(d):
+    """Recursively convert a Convex result dict to a JSON-serialisable dict.
+    Maps _id -> id and converts millisecond timestamps to ISO-8601 strings."""
     TIMESTAMP_FIELDS = {"end_date", "created_at", "timestamp", "resolved_at", "expires_at"}
     if isinstance(d, dict):
         obj = {}
         for k, v in d.items():
-            attr = "id" if k == "_id" else k
+            key = "id" if k == "_id" else k
             if k in TIMESTAMP_FIELDS and isinstance(v, (int, float)):
-                obj[attr] = datetime.utcfromtimestamp(v / 1000)
+                obj[key] = datetime.utcfromtimestamp(v / 1000).isoformat() + "Z"
             else:
-                obj[attr] = _to_obj(v)
-        return SimpleNamespace(**obj)
+                obj[key] = convex_to_json(v)
+        return obj
     if isinstance(d, list):
-        return [_to_obj(item) for item in d]
+        return [convex_to_json(item) for item in d]
     return d
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user" not in session:
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 
 def admin_required(f):
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated(*args, **kwargs):
         admin_email = os.getenv("ADMIN_EMAIL")
-        if "user" not in session or session["user"].get("email") != admin_email:
-            flash("Unauthorized access", "error")
-            return redirect(url_for("login"))
+        user = session.get("user")
+        if not user:
+            return jsonify({"error": "Unauthorized"}), 401
+        if not user.get("is_admin") and user.get("email") != admin_email:
+            return jsonify({"error": "Forbidden"}), 403
         return f(*args, **kwargs)
-    return decorated_function
+    return decorated
 
 
 # ---------------------------------------------------------------------------
-# Routes
+# Auth routes
 # ---------------------------------------------------------------------------
 
-@app.route("/")
-def home():
-    results = convex.query("markets:getActive")
-    featured_markets = [_to_obj(m) for m in (results or [])]
-    return render_template("home.html", featured_markets=featured_markets)
+@app.route("/api/me")
+def me():
+    user = session.get("user")
+    if not user:
+        return jsonify({"error": "Not authenticated"}), 401
+    return jsonify({"email": user["email"], "is_admin": user.get("is_admin", False)})
 
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/api/login", methods=["POST"])
 def login():
-    if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
+    data = request.get_json() or {}
+    email = data.get("email", "").strip()
+    password = data.get("password", "")
 
-        admin_email = os.getenv("ADMIN_EMAIL")
-        admin_password = os.getenv("ADMIN_PASSWORD")
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
 
-        if email == admin_email and password == admin_password:
-            session["user"] = {"email": email, "is_admin": True}
-            flash("Logged in as Admin!", "success")
-            return redirect(url_for("admin"))
+    admin_email = os.getenv("ADMIN_EMAIL")
+    admin_password = os.getenv("ADMIN_PASSWORD")
 
-        # Look up user in Convex
-        user = convex.query("users:getByEmail", {"email": email})
-        if user and bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
-            session["user"] = {"email": email, "is_admin": False}
-            flash("Successfully logged in!", "success")
-            return redirect(url_for("home"))
+    if email == admin_email and password == admin_password:
+        session["user"] = {"email": email, "is_admin": True}
+        return jsonify({"email": email, "is_admin": True})
 
-        flash("Invalid credentials", "error")
+    user = convex.query("users:getByEmail", {"email": email})
+    if user and bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
+        session["user"] = {"email": email, "is_admin": False}
+        return jsonify({"email": email, "is_admin": False})
 
-    return render_template("auth/login.html")
+    return jsonify({"error": "Invalid credentials"}), 401
 
 
-@app.route("/register", methods=["GET", "POST"])
+@app.route("/api/register", methods=["POST"])
 def register():
-    if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
+    data = request.get_json() or {}
+    email = data.get("email", "").strip()
+    password = data.get("password", "")
 
-        if not email or not password:
-            flash("Email and password are required", "error")
-            return render_template("auth/register.html")
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
 
-        if len(password) < 6:
-            flash("Password must be at least 6 characters long", "error")
-            return render_template("auth/register.html")
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters long"}), 400
 
-        try:
-            password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-            convex.mutation("users:create", {"email": email, "password_hash": password_hash})
-            flash("Registration successful! You can now log in.", "success")
-            return redirect(url_for("login"))
-        except Exception as e:
-            if "already registered" in str(e).lower():
-                flash("This email is already registered. Please login instead.", "error")
-                return redirect(url_for("login"))
-            app.logger.error(f"Registration error: {e}")
-            flash("Registration failed. Please try again later.", "error")
-
-    return render_template("auth/register.html")
+    try:
+        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        convex.mutation("users:create", {"email": email, "password_hash": password_hash})
+        return jsonify({"message": "Registration successful! You can now log in."})
+    except Exception as e:
+        if "already registered" in str(e).lower():
+            return jsonify({"error": "This email is already registered. Please login instead."}), 409
+        app.logger.error(f"Registration error: {e}")
+        return jsonify({"error": "Registration failed. Please try again later."}), 500
 
 
-@app.route("/logout")
+@app.route("/api/logout", methods=["POST"])
 def logout():
     session.clear()
-    return redirect(url_for("login"))
+    return jsonify({"message": "Logged out successfully"})
 
 
-@app.route("/admin", methods=["GET", "POST"])
+# ---------------------------------------------------------------------------
+# Market routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/markets/featured")
+def featured_markets():
+    results = convex.query("markets:getActive")
+    markets = [convex_to_json(m) for m in (results or [])]
+    return jsonify(markets)
+
+
+@app.route("/api/markets")
+def explore_markets():
+    category = request.args.get("category", "all")
+    sort_by = request.args.get("sort", "created_at")
+    search = request.args.get("search", "")
+
+    results = convex.query("markets:searchActive", {
+        "search": search if search else None,
+        "category": category if category and category != "all" else None,
+        "sort_by": sort_by if sort_by else None,
+    })
+    markets = [convex_to_json(m) for m in (results or [])]
+
+    db_categories = convex.query("markets:getCategories") or []
+    default_categories = ["Crypto", "Politics", "Sports", "Technology", "Entertainment"]
+    categories = sorted(set(default_categories + list(db_categories)))
+
+    return jsonify({"markets": markets, "categories": categories})
+
+
+@app.route("/api/markets/<string:market_id>")
+def market_detail(market_id):
+    market_data = convex.query("markets:getById", {"id": market_id})
+    if not market_data:
+        return jsonify({"error": "Market not found"}), 404
+
+    market = convex_to_json(market_data)
+    trades_data = convex.query("trades:getByMarket", {"market_id": market_id})
+    trades = [convex_to_json(t) for t in (trades_data or [])]
+
+    return jsonify({"market": market, "trades": trades})
+
+
+# ---------------------------------------------------------------------------
+# Trade routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/trade/<string:market_id>/<string:share_type>", methods=["POST"])
+@login_required
+def trade(market_id, share_type):
+    if share_type not in ["yes", "no"]:
+        return jsonify({"error": "Invalid share type"}), 400
+
+    market_data = convex.query("markets:getById", {"id": market_id})
+    if not market_data:
+        return jsonify({"error": "Market not found"}), 404
+
+    data = request.get_json() or {}
+    try:
+        amount = float(data.get("amount", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid amount"}), 400
+
+    if amount <= 0:
+        return jsonify({"error": "Amount must be greater than 0"}), 400
+
+    user_id = session["user"]["email"]
+    price = market_data["price_yes"] if share_type == "yes" else market_data["price_no"]
+
+    convex.mutation("trades:create", {
+        "user_id": user_id,
+        "market_id": market_id,
+        "share_type": share_type,
+        "amount": amount,
+        "price_at_trade": price,
+    })
+
+    return jsonify({"message": f"Bought {amount} {share_type.upper()} shares at ${price}"})
+
+
+# ---------------------------------------------------------------------------
+# Admin routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/markets", methods=["GET"])
 @admin_required
-def admin():
-    if request.method == "POST":
-        title = request.form.get("title")
-        description = request.form.get("description")
-        end_date_str = request.form.get("end_date")
-        price_yes = float(request.form.get("price_yes"))
-        price_no = float(request.form.get("price_no"))
-
-        end_date_ms = int(datetime.strptime(end_date_str, "%Y-%m-%d").timestamp() * 1000)
-        convex.mutation("markets:create", {
-            "title": title,
-            "description": description,
-            "end_date": end_date_ms,
-            "price_yes": price_yes,
-            "price_no": price_no,
-        })
-        flash("Market created successfully!", "success")
-        return redirect(url_for("admin"))
-
+def admin_get_markets():
     results = convex.query("markets:getAll")
-    markets = [_to_obj(m) for m in (results or [])]
-    return render_template("admin.html", markets=markets)
+    markets = [convex_to_json(m) for m in (results or [])]
+    return jsonify(markets)
 
 
-@app.route("/admin/create-btc-market", methods=["GET", "POST"])
+@app.route("/api/admin/markets", methods=["POST"])
+@admin_required
+def admin_create_market():
+    data = request.get_json() or {}
+    title = data.get("title", "").strip()
+    description = data.get("description", "").strip()
+    end_date_str = data.get("end_date", "")
+    price_yes = data.get("price_yes")
+    price_no = data.get("price_no")
+
+    if not title or not description or not end_date_str or price_yes is None or price_no is None:
+        return jsonify({"error": "All fields are required"}), 400
+
+    try:
+        end_date_ms = int(datetime.strptime(end_date_str, "%Y-%m-%d").timestamp() * 1000)
+        price_yes = float(price_yes)
+        price_no = float(price_no)
+    except (ValueError, TypeError) as e:
+        return jsonify({"error": f"Invalid data: {e}"}), 400
+
+    convex.mutation("markets:create", {
+        "title": title,
+        "description": description,
+        "end_date": end_date_ms,
+        "price_yes": price_yes,
+        "price_no": price_no,
+    })
+
+    return jsonify({"message": "Market created successfully!"})
+
+
+@app.route("/api/admin/btc-market", methods=["POST"])
 @admin_required
 def create_btc_market():
     try:
         url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-        response = requests.get(url, verify=False)
+        response = requests.get(url, verify=False, timeout=10)
         response.raise_for_status()
         price = float(response.json()["bitcoin"]["usd"])
 
@@ -189,150 +295,83 @@ def create_btc_market():
             },
         })
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)})
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route("/market/<string:market_id>")
-def market_detail(market_id):
-    market_data = convex.query("markets:getById", {"id": market_id})
-    if not market_data:
-        flash("Market not found", "error")
-        return redirect(url_for("home"))
+# ---------------------------------------------------------------------------
+# Password reset routes
+# ---------------------------------------------------------------------------
 
-    market = _to_obj(market_data)
-    trades_data = convex.query("trades:getByMarket", {"market_id": market_id})
-    trades = [_to_obj(t) for t in (trades_data or [])]
-
-    return render_template("market.html", market=market, trades=trades)
-
-
-@app.route("/trade/<string:market_id>/<string:share_type>", methods=["GET", "POST"])
-def trade(market_id, share_type):
-    if "user" not in session:
-        flash("Please log in to trade", "error")
-        return redirect(url_for("login"))
-
-    if share_type not in ["yes", "no"]:
-        flash("Invalid share type", "error")
-        return redirect(url_for("market_detail", market_id=market_id))
-
-    market_data = convex.query("markets:getById", {"id": market_id})
-    if not market_data:
-        flash("Market not found", "error")
-        return redirect(url_for("home"))
-
-    market = _to_obj(market_data)
-
-    if request.method == "POST":
-        amount = float(request.form.get("amount", 0))
-        user_id = session["user"]["email"]
-        price = market_data["price_yes"] if share_type == "yes" else market_data["price_no"]
-
-        if amount <= 0:
-            flash("Amount must be greater than 0", "error")
-            return redirect(request.url)
-
-        convex.mutation("trades:create", {
-            "user_id": user_id,
-            "market_id": market_id,
-            "share_type": share_type,
-            "amount": amount,
-            "price_at_trade": price,
-        })
-        flash(f"Bought {amount} {share_type.upper()} shares at ${price}", "success")
-        return redirect(url_for("market_detail", market_id=market_id))
-
-    return render_template("trade.html", market=market, share_type=share_type)
-
-
-@app.route("/forgot-password", methods=["GET", "POST"])
+@app.route("/api/forgot-password", methods=["POST"])
 def forgot_password():
-    if request.method == "POST":
-        email = request.form.get("email")
-        user = convex.query("users:getByEmail", {"email": email})
-        if user:
-            token = secrets.token_urlsafe(32)
-            expires_at = int((datetime.utcnow() + timedelta(hours=1)).timestamp() * 1000)
-            convex.mutation("users:createResetToken", {
-                "email": email,
-                "token": token,
-                "expires_at": expires_at,
-            })
-            reset_url = url_for("set_new_password", token=token, _external=True)
-            # TODO: send reset_url via email. For now, log it.
-            app.logger.info(f"Password reset link for {email}: {reset_url}")
-            flash(
-                f"Password reset link generated. Check server logs (configure email sending to deliver it automatically).",
-                "success",
-            )
-        else:
-            # Don't reveal whether the email exists
-            flash("If that email is registered, a reset link has been generated.", "success")
+    data = request.get_json() or {}
+    email = data.get("email", "").strip()
 
-    return render_template("auth/forgot_password.html")
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
 
-
-@app.route("/set-new-password", methods=["GET", "POST"])
-def set_new_password():
-    token = request.args.get("token")
-    if not token:
-        flash("Invalid or missing token", "error")
-        return redirect(url_for("login"))
-
-    if request.method == "POST":
-        new_password = request.form.get("new_password")
-        if len(new_password) < 6:
-            flash("Password must be at least 6 characters", "error")
-            return render_template("auth/set_new_password.html", token=token)
-
-        record = convex.query("users:getResetToken", {"token": token})
-        if not record:
-            flash("Reset token is invalid or expired", "error")
-            return redirect(url_for("login"))
-
-        expires_at = datetime.utcfromtimestamp(record["expires_at"] / 1000)
-        if datetime.utcnow() > expires_at:
-            convex.mutation("users:deleteResetToken", {"token": token})
-            flash("Reset token has expired. Please request a new one.", "error")
-            return redirect(url_for("forgot_password"))
-
-        password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-        convex.mutation("users:updatePassword", {
-            "email": record["email"],
-            "password_hash": password_hash,
+    user = convex.query("users:getByEmail", {"email": email})
+    if user:
+        token = secrets.token_urlsafe(32)
+        expires_at = int((datetime.utcnow() + timedelta(hours=1)).timestamp() * 1000)
+        convex.mutation("users:createResetToken", {
+            "email": email,
+            "token": token,
+            "expires_at": expires_at,
         })
-        convex.mutation("users:deleteResetToken", {"token": token})
-        flash("Password updated successfully. You can now log in.", "success")
-        return redirect(url_for("login"))
+        reset_url = f"/set-new-password?token={token}"
+        app.logger.info(f"Password reset link for {email}: {reset_url}")
 
-    return render_template("auth/set_new_password.html", token=token)
-
-
-@app.route("/markets")
-def explore_markets():
-    category = request.args.get("category", "all")
-    sort_by = request.args.get("sort", "created_at")
-    search = request.args.get("search", "")
-
-    results = convex.query("markets:searchActive", {
-        "search": search or None,
-        "category": category or None,
-        "sort_by": sort_by or None,
+    return jsonify({
+        "message": "If that email is registered, a reset link has been generated. Check server logs."
     })
-    markets = [_to_obj(m) for m in (results or [])]
 
-    db_categories = convex.query("markets:getCategories") or []
-    default_categories = ["Crypto", "Politics", "Sports", "Technology", "Entertainment"]
-    categories = sorted(set(default_categories + list(db_categories)))
 
-    return render_template(
-        "explore_markets.html",
-        markets=markets,
-        categories=categories,
-        current_category=category,
-        current_sort=sort_by,
-        search_query=search,
-    )
+@app.route("/api/set-new-password", methods=["POST"])
+def set_new_password():
+    data = request.get_json() or {}
+    token = data.get("token", "").strip()
+    new_password = data.get("new_password", "")
+
+    if not token:
+        return jsonify({"error": "Token is required"}), 400
+
+    if len(new_password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters"}), 400
+
+    record = convex.query("users:getResetToken", {"token": token})
+    if not record:
+        return jsonify({"error": "Reset token is invalid or expired"}), 400
+
+    expires_at = datetime.utcfromtimestamp(record["expires_at"] / 1000)
+    if datetime.utcnow() > expires_at:
+        convex.mutation("users:deleteResetToken", {"token": token})
+        return jsonify({"error": "Reset token has expired. Please request a new one."}), 400
+
+    password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    convex.mutation("users:updatePassword", {
+        "email": record["email"],
+        "password_hash": password_hash,
+    })
+    convex.mutation("users:deleteResetToken", {"token": token})
+
+    return jsonify({"message": "Password updated successfully. You can now log in."})
+
+
+# ---------------------------------------------------------------------------
+# Serve React in production
+# ---------------------------------------------------------------------------
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_react(path):
+    dist = FRONTEND_DIST
+    if path and os.path.exists(os.path.join(dist, path)):
+        return send_from_directory(dist, path)
+    index = os.path.join(dist, "index.html")
+    if os.path.exists(index):
+        return send_from_directory(dist, "index.html")
+    return jsonify({"error": "Frontend not built. Run `npm run build` in the frontend/ directory."}), 404
 
 
 if __name__ == "__main__":
