@@ -5,6 +5,8 @@
     "dev": "convex dev"
   },
   "dependencies": {
+    "@auth/core": "^0.34.2",
+    "@convex-dev/auth": "^0.0.71",
     "convex": "^1.33.0"
   }
 }

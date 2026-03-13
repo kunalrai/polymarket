@@ -5,57 +5,78 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Python setup
-python -m venv venv
-source venv/Scripts/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+# Install root dependencies (Convex + auth)
+npm install
 
-# Convex setup (requires Node.js)
-npx convex dev        # deploys TypeScript functions and starts watching for changes
-# This prints your CONVEX_URL — add it to .env
+# Install frontend dependencies
+cd frontend && npm install
 
-# Development server (http://localhost:5000)
-python app.py
+# Run Convex backend (deploys TypeScript functions, watches for changes)
+npm run dev
+# or: npx convex dev
 
-# Production server
-gunicorn --bind=0.0.0.0 --timeout 600 app:app
+# Run frontend dev server
+cd frontend && npm run dev
+
+# Build frontend for production
+cd frontend && npm run build
 ```
 
 ## Environment Variables
 
-Requires a `.env` file:
+**Root `.env` (for Convex deployment):**
 ```
-FLASK_APP=app.py
-FLASK_ENV=development
-FLASK_DEBUG=1
-ADMIN_EMAIL=...
-ADMIN_PASSWORD=...
-SECRET_KEY=...
-CONVEX_URL=https://<your-deployment>.convex.cloud
+ADMIN_EMAIL=your-admin@example.com
 ```
+
+**`frontend/.env.local` (for Vite):**
+```
+VITE_CONVEX_URL=https://<your-deployment>.convex.cloud
+```
+
+Set `ADMIN_EMAIL` as a Convex environment variable via the Convex dashboard or `npx convex env set ADMIN_EMAIL your@email.com`.
 
 ## Architecture
 
-**Two-tier backend:**
-- **Convex** (TypeScript, `convex/`) — all data storage and business logic. Defines tables in `schema.ts` and exposes named queries/mutations in `markets.ts`, `trades.ts`, `users.ts`.
-- **Flask** (`app.py`) — HTTP layer / Jinja2 template rendering. Calls Convex via the Python `convex` client (`get_convex_client()` in `utils/convex_client.py`).
+**Single-tier backend — no Flask:**
+- **Convex** (`convex/`) — all data storage, business logic, and authentication. Uses `@convex-dev/auth` with the Password provider.
+- **React** (`frontend/src/`) — uses `useQuery`/`useMutation`/`useAction` from `convex/react` directly, and `useAuthActions`/`useConvexAuth` from `@convex-dev/auth/react`.
 
 **Convex data model** (`convex/schema.ts`):
-- `users` — email + bcrypt password hash
+- `authTables` — spread from `@convex-dev/auth/server`; manages users and sessions automatically
 - `markets` — prediction market (timestamps stored as unix ms)
 - `trades` — buy transactions; creating a trade also updates `holdings` and `market.volume`
 - `holdings` — aggregated shares per user per market
 - `market_prices` — price history
 - `market_resolution_logs` — admin audit trail
-- `password_reset_tokens` — short-lived tokens for password reset flow
+
+**Convex functions:**
+- `convex/auth.ts` — exports `{ auth, signIn, signOut, store }` from `convexAuth`
+- `convex/http.ts` — HTTP router with auth routes attached
+- `convex/users.ts` — `currentUser` (public query), `getById` (internal query)
+- `convex/markets.ts` — `getActive`, `getAll`, `getById`, `searchActive`, `getCategories`, `create` (mutation, admin-only), `createInternal` (internal mutation), `createBtcMarket` (action, admin-only)
+- `convex/trades.ts` — `getByMarket` (query), `create` (mutation, auth required)
 
 **Authentication:**
-- Admin: hardcoded `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars, checked in `admin_required` decorator.
-- Regular users: bcrypt-hashed password stored in Convex `users` table; validated on login.
-- Password reset generates a token stored in Convex (expires 1 hour). Email delivery is not wired up — the reset URL is currently logged to the server console. Wire up Flask-Mail or similar to send it.
+- Uses `@convex-dev/auth` Password provider.
+- `signIn('password', { email, password, flow: 'signIn' })` for login.
+- `signIn('password', { email, password, flow: 'signUp' })` for registration.
+- `signIn('password', { email, flow: 'reset' })` to request password reset code.
+- `signIn('password', { email, code, newPassword, flow: 'reset-verification' })` to confirm reset.
+- Admin check: `user.email === process.env.ADMIN_EMAIL` in Convex functions.
 
-**Convex result conversion:** `_to_obj()` in `app.py` converts Convex dicts to `SimpleNamespace` objects (so templates use `market.title` not `market["title"]`). It also maps `_id` → `id` and converts millisecond timestamps to `datetime` objects.
+**Frontend structure** (`frontend/src/`):
+- `main.jsx` — wraps app in `<ConvexAuthProvider>`
+- `App.jsx` — router with `AdminRoute` guard using `useConvexAuth` + `useQuery(api.users.currentUser)`
+- `components/Navbar.jsx` — uses `useConvexAuth`, `useQuery(api.users.currentUser)`, `useAuthActions`
+- `components/MarketCard.jsx` — displays market card; handles `end_date` as unix ms timestamp
+- `pages/` — all pages use Convex hooks directly, no intermediate API layer
+
+**Import paths for `api`:**
+- From `frontend/src/App.jsx`: `'../../convex/_generated/api'`
+- From `frontend/src/pages/*.jsx`: `'../../../convex/_generated/api'`
+- From `frontend/src/components/*.jsx`: `'../../../convex/_generated/api'`
 
 ## Deployment
 
-Deployed to Azure Web Apps via GitHub Actions (`.github/workflows/deployment.yml`) on push to `main`. Convex functions are deployed separately via `npx convex deploy`. Add `CONVEX_URL` to GitHub Actions secrets.
+Convex functions deploy via `npx convex deploy`. The frontend builds to `frontend/dist/` and can be served as a static site. Set `VITE_CONVEX_URL` to your production Convex deployment URL.

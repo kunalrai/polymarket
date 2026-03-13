@@ -1,33 +1,31 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { authTables } from "@convex-dev/auth/server";
 
 export default defineSchema({
-  users: defineTable({
-    email: v.string(),
-    password_hash: v.string(),
-  }).index("by_email", ["email"]),
+  ...authTables,
 
   markets: defineTable({
     title: v.string(),
     description: v.optional(v.string()),
     category: v.optional(v.string()),
-    end_date: v.number(), // unix ms
+    end_date: v.number(),
     is_featured: v.boolean(),
-    status: v.string(), // "active" | "resolved"
-    outcome: v.optional(v.string()), // "yes" | "no"
+    status: v.string(),
+    outcome: v.optional(v.string()),
     price_yes: v.number(),
     price_no: v.number(),
     volume: v.number(),
-    created_at: v.number(), // unix ms
+    created_at: v.number(),
   }),
 
   trades: defineTable({
     user_id: v.string(),
-    market_id: v.string(), // markets._id as string
-    share_type: v.string(), // "yes" | "no"
+    market_id: v.string(),
+    share_type: v.string(),
     amount: v.number(),
     price_at_trade: v.number(),
-    created_at: v.number(), // unix ms
+    created_at: v.number(),
   }).index("by_market", ["market_id"]),
 
   market_prices: defineTable({
@@ -50,10 +48,4 @@ export default defineSchema({
     outcome: v.string(),
     resolved_at: v.number(),
   }),
-
-  password_reset_tokens: defineTable({
-    email: v.string(),
-    token: v.string(),
-    expires_at: v.number(),
-  }).index("by_token", ["token"]),
 });

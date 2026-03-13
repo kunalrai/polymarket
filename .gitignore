@@ -58,3 +58,10 @@ build/
 node_modules/
 frontend/node_modules/
 frontend/dist/
+
+# Python (no longer used)
+*.db
+instance/
+
+# Convex auth generated
+frontend/.env.local

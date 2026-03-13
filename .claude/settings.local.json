@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /c/apps/repo/polymarket/*.js /c/apps/repo/polymarket/*.json /c/apps/repo/polymarket/.* 2>/dev/null | grep -E '\\\\.\\(js|json|md|toml|yaml|yml|ini\\)$')",
+      "Bash(wc -l /c/apps/repo/polymarket/templates/*.html /c/apps/repo/polymarket/templates/auth/*.html)",
+      "Bash(git -C /c/apps/repo/polymarket log --oneline -15)",
+      "Bash(du -sh /c/apps/repo/polymarket/* 2>/dev/null | sort -hr)",
+      "Bash(grep -r \"TODO\\\\|FIXME\\\\|XXX\\\\|HACK\" /c/apps/repo/polymarket --include=\"*.py\" --include=\"*.html\" 2>/dev/null | head -10)",
+      "Bash(cd \"C:/apps/repo/polymarket/frontend\" && npm install 2>&1)",
+      "Bash(cd \"C:/apps/repo/polymarket/frontend\" && npm run build 2>&1)",
+      "Bash(rm -rf \"C:/apps/repo/polymarket/models\" && cd \"C:/apps/repo/polymarket\" && npm install 2>&1)",
+      "Bash(cd \"C:/apps/repo/polymarket\" && npm install 2>&1)",
+      "Bash(cd \"C:/apps/repo/polymarket\" && npm install --legacy-peer-deps 2>&1)"
+    ]
+  }
+}

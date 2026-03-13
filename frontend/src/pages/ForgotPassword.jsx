@@ -1,91 +1,85 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import API from '../api.js';
+import { useAuthActions } from '@convex-dev/auth/react';
 
 export default function ForgotPassword() {
+  const { signIn } = useAuthActions();
   const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
 
-  const handleSubmit = async (e) => {
+  const handleRequestReset = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
-    setLoading(true);
+    setError(''); setLoading(true);
     try {
-      const data = await API('/forgot-password', {
-        method: 'POST',
-        body: JSON.stringify({ email }),
-      });
-      setSuccess(data.message);
+      await signIn('password', { email, flow: 'reset' });
+      setCodeSent(true);
+      setMessage('Check your email for a reset code.');
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to send reset email');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (newPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
+    setError(''); setLoading(true);
+    try {
+      await signIn('password', { email, code, newPassword, flow: 'reset-verification' });
+      setMessage('Password updated! You can now log in.');
+    } catch (err) {
+      setError(err.message || 'Reset failed. Check your code and try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <i className="fas fa-lock text-blue-600 text-4xl mb-3 block"></i>
-          <h1 className="text-2xl font-bold text-gray-800">Forgot Password</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Enter your email and we'll generate a reset link.
-          </p>
-        </div>
+    <div className="max-w-md mx-auto mt-16 px-4">
+      <h2 className="text-3xl font-bold text-center mb-8">Reset Password</h2>
+      <div className="bg-white shadow rounded-lg p-8">
+        {message && <div className="mb-4 text-green-600 bg-green-50 border border-green-200 rounded px-4 py-2 text-sm">{message}</div>}
+        {error && <div className="mb-4 text-red-600 bg-red-50 border border-red-200 rounded px-4 py-2 text-sm">{error}</div>}
 
-        {/* Messages */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-5 text-sm">
-            <i className="fas fa-exclamation-circle mr-2"></i>{error}
-          </div>
-        )}
-        {success && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-5 text-sm">
-            <i className="fas fa-check-circle mr-2"></i>{success}
-          </div>
-        )}
-
-        {!success && (
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="you@example.com"
-                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+        {!codeSent ? (
+          <form onSubmit={handleRequestReset}>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
+                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold py-3 rounded-lg transition-colors"
-            >
-              {loading ? (
-                <><i className="fas fa-spinner fa-spin mr-2"></i>Sending...</>
-              ) : (
-                'Send Reset Link'
-              )}
+            <button type="submit" disabled={loading}
+              className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-md transition">
+              {loading ? 'Sending...' : 'Send Reset Code'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleResetPassword}>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reset Code</label>
+              <input type="text" value={code} onChange={e => setCode(e.target.value)} required
+                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required
+                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <button type="submit" disabled={loading}
+              className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-md transition">
+              {loading ? 'Updating...' : 'Update Password'}
             </button>
           </form>
         )}
-
-        <p className="text-center text-sm text-gray-500 mt-6">
-          Remembered your password?{' '}
-          <Link to="/login" className="text-blue-600 hover:text-blue-800 font-medium">
-            Sign in
-          </Link>
-        </p>
+        <div className="mt-6 text-center text-sm">
+          <Link to="/login" className="text-blue-600 hover:underline">Back to Login</Link>
+        </div>
       </div>
     </div>
   );

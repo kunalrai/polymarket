@@ -1,175 +1,102 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import API from '../api.js';
+import { useQuery } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 import MarketCard from '../components/MarketCard.jsx';
 
-const CATEGORIES = ['All Markets', 'Crypto', 'Politics', 'Sports', 'Technology', 'Entertainment'];
-
-const HOW_IT_WORKS = [
-  {
-    icon: 'fa-search',
-    title: 'Browse Markets',
-    desc: 'Explore a wide range of prediction markets on politics, crypto, sports, and more.',
-  },
-  {
-    icon: 'fa-lightbulb',
-    title: 'Make Your Prediction',
-    desc: 'Research the topic and decide whether you think the outcome will be YES or NO.',
-  },
-  {
-    icon: 'fa-coins',
-    title: 'Buy Shares',
-    desc: 'Purchase YES or NO shares based on your prediction at the current market price.',
-  },
-  {
-    icon: 'fa-trophy',
-    title: 'Earn Rewards',
-    desc: 'If your prediction is correct, your shares pay out at $1 each when the market resolves.',
-  },
-];
-
 export default function Home() {
-  const [markets, setMarkets] = useState([]);
-  const [activeCategory, setActiveCategory] = useState('All Markets');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    API('/markets/featured')
-      .then(setMarkets)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const filtered =
-    activeCategory === 'All Markets'
-      ? markets
-      : markets.filter(
-          (m) => m.category && m.category.toLowerCase() === activeCategory.toLowerCase()
-        );
+  const markets = useQuery(api.markets.getActive);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Category Nav */}
+      <div className="bg-white shadow-sm mb-8 -mx-4 px-4 overflow-x-auto">
+        <div className="flex items-center space-x-8 py-4 text-gray-600 whitespace-nowrap">
+          {[
+            ['fa-globe', 'All Markets', '/markets'],
+            ['fab fa-bitcoin', 'Crypto', '/markets?category=Crypto'],
+            ['fa-landmark', 'Politics', '/markets?category=Politics'],
+            ['fa-futbol', 'Sports', '/markets?category=Sports'],
+            ['fa-microchip', 'Technology', '/markets?category=Technology'],
+            ['fa-film', 'Entertainment', '/markets?category=Entertainment'],
+          ].map(([icon, label, href]) => (
+            <Link key={label} to={href} className="flex items-center space-x-2 hover:text-blue-600 transition">
+              <i className={`fas ${icon} text-lg`}></i>
+              <span>{label}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+
       {/* Hero */}
       <section
-        className="text-white py-24 px-4 text-center"
+        className="min-h-[400px] py-20 px-6 rounded-3xl shadow-lg relative overflow-hidden mb-20"
         style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
       >
-        <div className="max-w-3xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-extrabold mb-4">
-            Welcome to <span className="text-yellow-300">PredictMarket</span>
+        <div className="text-center relative z-10">
+          <h1 className="text-6xl font-extrabold text-white mb-6 drop-shadow-lg">
+            Welcome to PredictMarket
           </h1>
-          <p className="text-lg md:text-xl text-purple-100 mb-8">
-            Trade on the outcomes of real-world events. Use your knowledge to earn on politics,
-            crypto, sports, and more.
+          <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto font-light">
+            Trade on real-world events. Make smart predictions. Earn rewards.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              to="/markets"
-              className="bg-white text-purple-700 hover:bg-yellow-300 hover:text-purple-900 font-bold px-8 py-3 rounded-xl text-lg transition-colors shadow-lg"
-            >
-              Explore Markets
-            </Link>
-            <Link
-              to="/register"
-              className="bg-transparent border-2 border-white text-white hover:bg-white hover:text-purple-700 font-bold px-8 py-3 rounded-xl text-lg transition-colors"
-            >
-              Get Started
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Category nav */}
-      <section className="bg-white shadow-sm sticky top-16 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex gap-2 overflow-x-auto">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
-                activeCategory === cat
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+          <Link
+            to="/markets"
+            className="bg-white text-blue-600 hover:bg-blue-50 font-semibold px-8 py-4 rounded-xl shadow-lg transition transform hover:scale-105 inline-block"
+          >
+            Explore Markets
+          </Link>
         </div>
       </section>
 
       {/* Featured Markets */}
-      <section className="max-w-7xl mx-auto px-4 py-12">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Featured Markets</h2>
-          <Link to="/markets" className="text-blue-600 hover:text-blue-800 font-medium text-sm">
-            View all <i className="fas fa-arrow-right ml-1"></i>
-          </Link>
-        </div>
+      <section className="mb-20">
+        <h2 className="text-3xl font-bold text-gray-900 mb-10 flex items-center gap-2">
+          <span>🔥</span> Featured Markets
+        </h2>
+        {markets === undefined ? (
+          <div className="text-center text-gray-500 py-12">Loading markets...</div>
+        ) : markets.length === 0 ? (
+          <div className="bg-white rounded-lg p-6 shadow text-center text-gray-600">
+            No featured markets available at the moment.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            {markets.map((market) => (
+              <MarketCard key={market._id} market={{ ...market, id: market._id }} />
+            ))}
+          </div>
+        )}
+      </section>
 
-        {loading && (
-          <div className="flex justify-center py-20">
-            <i className="fas fa-spinner fa-spin text-blue-600 text-3xl"></i>
-          </div>
-        )}
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-            {error}
-          </div>
-        )}
-        {!loading && !error && filtered.length === 0 && (
-          <div className="text-center py-20 text-gray-400">
-            <i className="fas fa-inbox text-5xl mb-4 block"></i>
-            <p className="text-lg">No markets available in this category.</p>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map((market) => (
-            <MarketCard key={market.id} market={market} />
+      {/* How It Works */}
+      <section className="mb-20">
+        <h2 className="text-3xl font-bold text-center text-gray-800 mb-12">How It Works</h2>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-center">
+          {[
+            ['fa-user-plus', 'Sign Up', 'Create your account securely.'],
+            ['fa-search-dollar', 'Browse Markets', 'View current topics and upcoming event markets.'],
+            ['fa-hand-holding-usd', 'Buy Shares', 'Select your side — "Yes" or "No" — and invest.'],
+            ['fa-trophy', 'Win & Earn', 'Correct predictions get paid when markets resolve.'],
+          ].map(([icon, title, desc], i) => (
+            <div key={title} className="bg-white p-6 rounded-xl shadow hover:scale-105 transition">
+              <i className={`fas ${icon} text-3xl text-indigo-500 mb-4`}></i>
+              <h3 className="text-lg font-semibold mb-2">{i + 1}. {title}</h3>
+              <p className="text-gray-600 text-sm">{desc}</p>
+            </div>
           ))}
         </div>
       </section>
 
-      {/* How It Works */}
-      <section className="bg-white py-16">
-        <div className="max-w-7xl mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center text-gray-800 mb-12">How It Works</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            {HOW_IT_WORKS.map((step, i) => (
-              <div key={i} className="text-center">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
-                  <i className={`fas ${step.icon} text-blue-600 text-2xl`}></i>
-                </div>
-                <div className="text-blue-600 font-bold text-xs uppercase tracking-widest mb-1">
-                  Step {i + 1}
-                </div>
-                <h3 className="text-lg font-bold text-gray-800 mb-2">{step.title}</h3>
-                <p className="text-gray-500 text-sm">{step.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* CTA */}
-      <section
-        className="py-16 text-center text-white"
-        style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
-      >
-        <div className="max-w-2xl mx-auto px-4">
-          <h2 className="text-3xl font-extrabold mb-4">Ready to Start Trading?</h2>
-          <p className="text-purple-100 mb-8 text-lg">
-            Join thousands of traders using their knowledge to earn on real-world outcomes.
-          </p>
-          <Link
-            to="/register"
-            className="inline-block bg-white text-purple-700 hover:bg-yellow-300 hover:text-purple-900 font-bold px-10 py-3 rounded-xl text-lg transition-colors shadow-lg"
-          >
-            Create Free Account
-          </Link>
-        </div>
+      <section className="text-center mb-12">
+        <p className="text-xl text-gray-800 font-medium mb-4">Ready to test your insights?</p>
+        <Link
+          to="/register"
+          className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 font-semibold rounded-lg shadow-md transition inline-block"
+        >
+          Create an Account
+        </Link>
       </section>
     </div>
   );
