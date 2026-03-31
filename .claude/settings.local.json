@@ -10,7 +10,15 @@
       "Bash(cd \"C:/apps/repo/polymarket/frontend\" && npm run build 2>&1)",
       "Bash(rm -rf \"C:/apps/repo/polymarket/models\" && cd \"C:/apps/repo/polymarket\" && npm install 2>&1)",
       "Bash(cd \"C:/apps/repo/polymarket\" && npm install 2>&1)",
-      "Bash(cd \"C:/apps/repo/polymarket\" && npm install --legacy-peer-deps 2>&1)"
+      "Bash(cd \"C:/apps/repo/polymarket\" && npm install --legacy-peer-deps 2>&1)",
+      "Bash(cd \"C:/apps/repo/polymarket\" && npm install --legacy-peer-deps 2>&1 | tail -5)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh run:*)",
+      "Bash(npm install:*)",
+      "Bash(claude mcp:*)",
+      "mcp__polymarket__create_market"
     ]
   }
 }

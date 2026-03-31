@@ -94,6 +94,29 @@ export const create = mutation({
   },
 });
 
+export const createMcp = mutation({
+  args: {
+    secret: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    category: v.optional(v.string()),
+    end_date: v.number(),
+    price_yes: v.number(),
+    price_no: v.number(),
+  },
+  handler: async (ctx, args) => {
+    if (args.secret !== process.env.MCP_SECRET) throw new Error("Unauthorized");
+    const { secret: _, ...marketArgs } = args;
+    return await ctx.db.insert("markets", {
+      ...marketArgs,
+      is_featured: false,
+      status: "active",
+      volume: 0,
+      created_at: Date.now(),
+    });
+  },
+});
+
 export const createInternal = internalMutation({
   args: {
     title: v.string(),
